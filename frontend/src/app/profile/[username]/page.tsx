@@ -13,6 +13,7 @@ type PageProps = {
 };
 
 type Profile = {
+  id: string;
   username: string;
   displayName: string;
   bio: string;
@@ -40,7 +41,7 @@ type LeaderboardEntry = {
 async function getProfile(username: string): Promise<Profile> {
   // Use a cache-busting or lower revalidation for profile page
   const res = await fetch(`${API_BASE_URL}/profiles/${username}`, {
-    next: { revalidate: 10 }
+    next: { revalidate: 10 },
   });
 
   if (res.status === 404) {
@@ -54,16 +55,18 @@ async function getProfile(username: string): Promise<Profile> {
   return res.json();
 }
 
-export async function generateMetadata(
-  { params }: { params: { username: string } }
-): Promise<Metadata> {
+export async function generateMetadata({
+  params,
+}: {
+  params: { username: string };
+}): Promise<Metadata> {
   const res = await fetch(`${API_BASE_URL}/profiles/${params.username}`, {
     next: { revalidate: 60 },
   });
 
   if (!res.ok) {
     return {
-      title: 'Profile not found — NovaSupport',
+      title: "Profile not found — NovaSupport",
     };
   }
 
@@ -74,24 +77,29 @@ export async function generateMetadata(
     description: profile.bio ?? `Support ${profile.displayName} on NovaSupport`,
     openGraph: {
       title: `${profile.displayName} on NovaSupport`,
-      description: profile.bio ?? `Support ${profile.displayName} on NovaSupport`,
+      description:
+        profile.bio ?? `Support ${profile.displayName} on NovaSupport`,
       images: profile.avatarUrl ? [profile.avatarUrl] : [],
       url: `https://novasupport.xyz/profile/${params.username}`,
-      type: 'profile',
+      type: "profile",
     },
     twitter: {
-      card: 'summary',
+      card: "summary",
       title: `${profile.displayName} on NovaSupport`,
-      description: profile.bio ?? `Support ${profile.displayName} on NovaSupport`,
+      description:
+        profile.bio ?? `Support ${profile.displayName} on NovaSupport`,
       images: profile.avatarUrl ? [profile.avatarUrl] : [],
     },
   };
 }
 
-async function getTransactions(username: string, limit = 10): Promise<SupportTx[]> {
+async function getTransactions(
+  username: string,
+  limit = 10,
+): Promise<SupportTx[]> {
   const res = await fetch(
     `${API_BASE_URL}/profiles/${username}/transactions?limit=${limit}`,
-    { next: { revalidate: 60 } }
+    { next: { revalidate: 60 } },
   );
 
   if (!res.ok) return [];
@@ -117,19 +125,34 @@ async function getLeaderboard(username: string): Promise<LeaderboardEntry[]> {
   };
 
   const source = body.leaderboard ?? [];
-  return source.slice(0, 5).map((entry, index) => {
-    const address = String(entry.supporterAddress ?? entry.supporter_address ?? entry.address ?? "");
-    const amount = String(entry.totalAmount ?? entry.total_amount ?? entry.amount ?? "0");
-    const assetCode = String(entry.assetCode ?? entry.asset_code ?? entry.asset ?? "XLM");
-    const rankFromApi = Number(entry.rank);
+  return source
+    .slice(0, 5)
+    .map((entry, index) => {
+      const address = String(
+        entry.supporterAddress ??
+          entry.supporter_address ??
+          entry.address ??
+          "",
+      );
+      const amount = String(
+        entry.totalAmount ?? entry.total_amount ?? entry.amount ?? "0",
+      );
+      const assetCode = String(
+        entry.assetCode ?? entry.asset_code ?? entry.asset ?? "XLM",
+      );
+      const rankFromApi = Number(entry.rank);
 
-    return {
-      rank: Number.isFinite(rankFromApi) && rankFromApi > 0 ? rankFromApi : index + 1,
-      supporterAddress: address,
-      totalAmount: amount,
-      assetCode,
-    };
-  }).filter((entry) => entry.supporterAddress.length > 0);
+      return {
+        rank:
+          Number.isFinite(rankFromApi) && rankFromApi > 0
+            ? rankFromApi
+            : index + 1,
+        supporterAddress: address,
+        totalAmount: amount,
+        assetCode,
+      };
+    })
+    .filter((entry) => entry.supporterAddress.length > 0);
 }
 
 export default async function ProfilePage({ params }: PageProps) {
@@ -151,14 +174,18 @@ export default async function ProfilePage({ params }: PageProps) {
             acceptedAssets={profile.acceptedAssets}
             avatarUrl={profile.avatarUrl || undefined}
           />
-          
+
           <div className="px-2">
             <ProfileTabs username={profile.username} />
           </div>
         </div>
 
         <aside className="sticky top-24">
-          <SupportPanel walletAddress={profile.walletAddress} acceptedAssets={profile.acceptedAssets} />
+          <SupportPanel
+            walletAddress={profile.walletAddress}
+            acceptedAssets={profile.acceptedAssets}
+            profileId={profile.id}
+          />
 
           {leaderboard.length > 0 && (
             <div className="mt-6 rounded-3xl border border-white/5 bg-white/[0.02] p-6">
@@ -167,7 +194,10 @@ export default async function ProfilePage({ params }: PageProps) {
               </h4>
               <div className="space-y-3">
                 {leaderboard.map((entry) => (
-                  <div key={`${entry.rank}-${entry.supporterAddress}`} className="flex items-center justify-between gap-4">
+                  <div
+                    key={`${entry.rank}-${entry.supporterAddress}`}
+                    className="flex items-center justify-between gap-4"
+                  >
                     <span className="text-xs text-sky/70">#{entry.rank}</span>
                     <a
                       href={`https://stellar.expert/explorer/testnet/account/${entry.supporterAddress}`}
@@ -185,7 +215,7 @@ export default async function ProfilePage({ params }: PageProps) {
               </div>
             </div>
           )}
-          
+
           <div className="mt-6 rounded-3xl border border-white/5 bg-white/[0.02] p-6">
             <h4 className="text-[10px] uppercase tracking-[0.25em] text-steel font-bold mb-4">
               Campaign Stats

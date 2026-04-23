@@ -5,11 +5,18 @@ import { pinoHttp } from "pino-http";
 import type { Logger } from "pino";
 import { z } from "zod";
 import { StrKey, Horizon } from "@stellar/stellar-sdk";
-import swaggerJsdoc from 'swagger-jsdoc';
-import swaggerUi from 'swagger-ui-express';
+import swaggerJsdoc from "swagger-jsdoc";
+import swaggerUi from "swagger-ui-express";
 import { prisma } from "./db.js";
 import { logger } from "./logger.js";
-import { generateChallenge, verifySignature, signJWT, requireAuth, isValidStellarAddress, type AuthContext } from "./auth.js";
+import {
+  generateChallenge,
+  verifySignature,
+  signJWT,
+  requireAuth,
+  isValidStellarAddress,
+  type AuthContext,
+} from "./auth.js";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "./mailer.js";
@@ -29,7 +36,8 @@ declare global {
 const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_FILE_SIZE = 2_097_152;
 
-const horizonUrl = process.env.HORIZON_URL ?? "https://horizon-testnet.stellar.org";
+const horizonUrl =
+  process.env.HORIZON_URL ?? "https://horizon-testnet.stellar.org";
 const stellarServer = new Horizon.Server(horizonUrl);
 
 const upload = multer({
@@ -46,12 +54,13 @@ const upload = multer({
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseClient = supabaseUrl && supabaseKey
-  ? createClient(supabaseUrl, supabaseKey)
-  : null;
+const supabaseClient =
+  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
 if (!supabaseClient) {
-  logger.warn("SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set — avatar upload endpoint will return 503");
+  logger.warn(
+    "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set — avatar upload endpoint will return 503",
+  );
 }
 
 function createRateLimiters() {
@@ -74,7 +83,12 @@ function createRateLimiters() {
   return { globalLimiter, writeLimiter };
 }
 
-function sendError(res: Response, status: number, message: string, code?: string) {
+function sendError(
+  res: Response,
+  status: number,
+  message: string,
+  code?: string,
+) {
   return res.status(status).json({ error: message, ...(code ? { code } : {}) });
 }
 
@@ -84,31 +98,35 @@ export function createApp(customLogger?: Logger) {
 
   const swaggerSpec = swaggerJsdoc({
     definition: {
-      openapi: '3.0.0',
+      openapi: "3.0.0",
       info: {
-        title: 'NovaSupport API',
-        version: '1.0.0',
-        description: 'Backend API for NovaSupport — Stellar-native creator support platform',
+        title: "NovaSupport API",
+        version: "1.0.0",
+        description:
+          "Backend API for NovaSupport — Stellar-native creator support platform",
       },
-      servers: [{ url: 'http://localhost:4000' }],
+      servers: [{ url: "http://localhost:4000" }],
       components: {
         securitySchemes: {
           bearerAuth: {
-            type: 'http',
-            scheme: 'bearer',
-            bearerFormat: 'JWT',
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "JWT",
           },
         },
       },
     },
-    apis: ['./src/app.ts'],
+    apis: ["./src/app.ts"],
   });
 
-  app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-  app.get('/docs.json', (req, res) => res.json(swaggerSpec));
+  app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.get("/docs.json", (req, res) => res.json(swaggerSpec));
 
   // In-memory challenge store (stateless with signed timestamp)
-  const challenges = new Map<string, { challenge: string; timestamp: number }>();
+  const challenges = new Map<
+    string,
+    { challenge: string; timestamp: number }
+  >();
   const CHALLENGE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
   function cleanupExpiredChallenges() {
@@ -123,20 +141,24 @@ export function createApp(customLogger?: Logger) {
   // Cleanup expired challenges every minute
   setInterval(cleanupExpiredChallenges, 60000);
 
-  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:3000")
+  const allowedOrigins = (
+    process.env.ALLOWED_ORIGINS ?? "http://localhost:3000"
+  )
     .split(",")
-    .map(o => o.trim());
+    .map((o) => o.trim());
 
-  app.use(cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (curl, Postman, server-to-server)
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-  }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        // Allow requests with no origin (curl, Postman, server-to-server)
+        if (!origin || allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error("Not allowed by CORS"));
+        }
+      },
+    }),
+  );
   app.use(express.json());
   app.use(pinoHttp({ logger: customLogger ?? logger }));
   app.use(globalLimiter);
@@ -201,14 +223,14 @@ export function createApp(customLogger?: Logger) {
   // Request a challenge nonce for wallet signature
   app.post("/auth/challenge", (req, res) => {
     const { walletAddress } = req.body;
-    
+
     if (!walletAddress || !isValidStellarAddress(walletAddress)) {
       return sendError(res, 400, "Invalid wallet address");
     }
-    
+
     const challenge = generateChallenge(walletAddress);
     challenges.set(walletAddress, { challenge, timestamp: Date.now() });
-    
+
     res.json({ challenge, walletAddress });
   });
 
@@ -254,7 +276,7 @@ export function createApp(customLogger?: Logger) {
     }
 
     const { walletAddress, signature } = parsed.data;
-    
+
     if (!isValidStellarAddress(walletAddress)) {
       return sendError(res, 400, "Invalid wallet address");
     }
@@ -271,7 +293,11 @@ export function createApp(customLogger?: Logger) {
     }
 
     // Verify the signature
-    const isValid = verifySignature(walletAddress, challengeData.challenge, signature);
+    const isValid = verifySignature(
+      walletAddress,
+      challengeData.challenge,
+      signature,
+    );
     if (!isValid) {
       return sendError(res, 401, "Invalid signature");
     }
@@ -310,18 +336,30 @@ export function createApp(customLogger?: Logger) {
    *           type: integer
    *           default: 20
    *         description: Number of profiles to return
-  *       - in: query
-  *         name: offset
-  *         schema:
-  *           type: integer
-  *           default: 0
-  *         description: Number of profiles to skip
-  *       - in: query
-  *         name: search
-  *         schema:
-  *           type: string
-  *           maxLength: 100
-  *         description: Optional search term for username or displayName (case-insensitive)
+   *       - in: query
+   *         name: offset
+   *         schema:
+   *           type: integer
+   *           default: 0
+   *         description: Number of profiles to skip
+   *       - in: query
+   *         name: search
+   *         schema:
+   *           type: string
+   *           maxLength: 100
+   *         description: Optional search term for username or displayName (case-insensitive)
+   *       - in: query
+   *         name: sort
+   *         schema:
+   *           type: string
+   *           enum: [newest, most_supported, most_transactions]
+   *           default: newest
+   *         description: Sort order for profiles
+   *       - in: query
+   *         name: asset
+   *         schema:
+   *           type: string
+   *         description: Filter by accepted asset code (e.g., XLM, USDC)
    *     responses:
    *       200:
    *         description: List of profiles
@@ -332,32 +370,158 @@ export function createApp(customLogger?: Logger) {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
       const offset = parseInt(req.query.offset as string) || 0;
-      const rawSearch = typeof req.query.search === "string" ? req.query.search : "";
+      const rawSearch =
+        typeof req.query.search === "string" ? req.query.search : "";
       const search = rawSearch.trim().slice(0, 100);
+      const sort = (req.query.sort as string) || "newest";
+      const asset = typeof req.query.asset === "string" ? req.query.asset : "";
 
       const where = search
         ? {
-          OR: [
-            { username: { contains: search, mode: "insensitive" as const } },
-            { displayName: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
+            OR: [
+              { username: { contains: search, mode: "insensitive" as const } },
+              {
+                displayName: { contains: search, mode: "insensitive" as const },
+              },
+            ],
+          }
         : {};
 
+      let orderBy: object = { createdAt: "desc" };
+
+      if (sort === "most_supported" || sort === "most_transactions") {
+        // For sorting by support metrics, we'll fetch all and sort in memory
+        // This is a simplified approach; for production, consider aggregation
+        const profiles = await prisma.profile.findMany({
+          where,
+          include: {
+            acceptedAssets: true,
+            supportTransactions: {
+              where: { status: "SUCCESS" },
+              select: { amount: true, supporterAddress: true },
+            },
+          },
+        });
+
+        let sorted = profiles;
+        if (sort === "most_supported") {
+          sorted = profiles.sort((a, b) => {
+            const aTotal = a.supportTransactions.reduce(
+              (sum, tx) => sum + Number(tx.amount),
+              0,
+            );
+            const bTotal = b.supportTransactions.reduce(
+              (sum, tx) => sum + Number(tx.amount),
+              0,
+            );
+            return bTotal - aTotal;
+          });
+        } else if (sort === "most_transactions") {
+          sorted = profiles.sort(
+            (a, b) =>
+              b.supportTransactions.length - a.supportTransactions.length,
+          );
+        }
+
+        const filtered = asset
+          ? sorted.filter((p) => p.acceptedAssets.some((a) => a.code === asset))
+          : sorted;
+
+        const paginated = filtered.slice(offset, offset + limit);
+        const result = paginated.map((p) => {
+          const { supportTransactions: _supportTransactions, ...profile } = p;
+          return profile;
+        });
+
+        return res.json({
+          profiles: result,
+          total: filtered.length,
+          limit,
+          offset,
+        });
+      }
+
+      // Default sorting by newest
       const [profiles, total] = await Promise.all([
         prisma.profile.findMany({
           where,
           take: limit,
           skip: offset,
-          orderBy: { createdAt: "desc" },
+          orderBy,
           include: { acceptedAssets: true },
         }),
         prisma.profile.count({ where }),
       ]);
 
-      res.json({ profiles, total, limit, offset });
+      const filtered = asset
+        ? profiles.filter((p) => p.acceptedAssets.some((a) => a.code === asset))
+        : profiles;
+
+      res.json({
+        profiles: filtered,
+        total: asset ? filtered.length : total,
+        limit,
+        offset,
+      });
     } catch (e: unknown) {
       req.log.error({ err: e }, "database error listing profiles");
+      return sendError(res, 500, "Internal server error");
+    }
+  });
+
+  // ── Search profiles ────────────────────────────────────────────────────
+
+  /**
+   * @openapi
+   * /profiles/search:
+   *   get:
+   *     summary: Search profiles by username or display name
+   *     parameters:
+   *       - in: query
+   *         name: q
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Search query (case-insensitive)
+   *     responses:
+   *       200:
+   *         description: Search results (up to 10 profiles)
+   *       400:
+   *         description: Missing or empty query parameter
+   *       500:
+   *         description: Internal server error
+   */
+  app.get("/profiles/search", async (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+
+    if (!q) {
+      return sendError(
+        res,
+        400,
+        "Query parameter 'q' is required and cannot be empty",
+      );
+    }
+
+    try {
+      const profiles = await prisma.profile.findMany({
+        where: {
+          OR: [
+            { username: { contains: q, mode: "insensitive" } },
+            { displayName: { contains: q, mode: "insensitive" } },
+          ],
+        },
+        take: 10,
+        select: {
+          username: true,
+          displayName: true,
+          avatarUrl: true,
+          bio: true,
+        },
+      });
+
+      res.json(profiles);
+    } catch (e: unknown) {
+      req.log.error({ err: e }, "database error searching profiles");
       return sendError(res, 500, "Internal server error");
     }
   });
@@ -442,25 +606,44 @@ export function createApp(customLogger?: Logger) {
     }
   });
 
-  const stellarAddress = z.string().refine(
-    (val) => StrKey.isValidEd25519PublicKey(val),
-    { message: "Must be a valid Stellar public key" }
-  );
+  const stellarAddress = z
+    .string()
+    .refine((val) => StrKey.isValidEd25519PublicKey(val), {
+      message: "Must be a valid Stellar public key",
+    });
 
   const createProfileSchema = z.object({
-    username: z.string().min(3).max(32).regex(/^[a-z0-9-]+$/),
+    username: z
+      .string()
+      .min(3)
+      .max(32)
+      .regex(/^[a-z0-9-]+$/),
     displayName: z.string().min(1).max(64),
     bio: z.string().max(280).optional().default(""),
     walletAddress: stellarAddress,
     email: z.string().email().optional().nullable(),
     websiteUrl: z.string().url().startsWith("https://").optional().nullable(),
-    twitterHandle: z.string().max(15).regex(/^[a-zA-Z0-9_]+$/).optional().nullable(),
-    githubHandle: z.string().max(39).regex(/^[a-zA-Z0-9-]+$/).optional().nullable(),
+    twitterHandle: z
+      .string()
+      .max(15)
+      .regex(/^[a-zA-Z0-9_]+$/)
+      .optional()
+      .nullable(),
+    githubHandle: z
+      .string()
+      .max(39)
+      .regex(/^[a-zA-Z0-9-]+$/)
+      .optional()
+      .nullable(),
     // ownerId removed - now derived from JWT
-    acceptedAssets: z.array(z.object({
-      code: z.string().min(1).max(12),
-      issuer: z.string().optional(),
-    })).min(1),
+    acceptedAssets: z
+      .array(
+        z.object({
+          code: z.string().min(1).max(12),
+          issuer: z.string().optional(),
+        }),
+      )
+      .min(1),
   });
 
   /**
@@ -531,11 +714,25 @@ export function createApp(customLogger?: Logger) {
       return sendError(res, 400, "Invalid request body");
     }
 
-    const { username, displayName, bio, walletAddress, email, websiteUrl, twitterHandle, githubHandle, acceptedAssets } = parsed.data;
-    
+    const {
+      username,
+      displayName,
+      bio,
+      walletAddress,
+      email,
+      websiteUrl,
+      twitterHandle,
+      githubHandle,
+      acceptedAssets,
+    } = parsed.data;
+
     // Verify authenticated wallet matches the profile wallet address
     if (!req.auth || req.auth.walletAddress !== walletAddress) {
-      return sendError(res, 403, "Forbidden: Wallet address does not match authenticated user");
+      return sendError(
+        res,
+        403,
+        "Forbidden: Wallet address does not match authenticated user",
+      );
     }
 
     try {
@@ -557,10 +754,20 @@ export function createApp(customLogger?: Logger) {
       req.log.info({ username: profile.username }, "profile created");
       return res.status(201).json(profile);
     } catch (e: unknown) {
-      if (e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002") {
+      if (
+        e &&
+        typeof e === "object" &&
+        "code" in e &&
+        (e as { code: string }).code === "P2002"
+      ) {
         const meta = (e as { meta?: { target?: string[] } }).meta;
         const field = meta?.target?.includes("email") ? "Email" : "Username";
-        return sendError(res, 409, `${field} already taken`, `${field.toUpperCase()}_TAKEN`);
+        return sendError(
+          res,
+          409,
+          `${field} already taken`,
+          `${field.toUpperCase()}_TAKEN`,
+        );
       }
       req.log.error({ err: e }, "database error creating profile");
       return sendError(res, 500, "Internal server error");
@@ -576,8 +783,18 @@ export function createApp(customLogger?: Logger) {
     email: z.string().email().optional().nullable(),
     notifyOnSupport: z.boolean().optional(),
     websiteUrl: z.string().url().startsWith("https://").optional().nullable(),
-    twitterHandle: z.string().max(15).regex(/^[a-zA-Z0-9_]+$/).optional().nullable(),
-    githubHandle: z.string().max(39).regex(/^[a-zA-Z0-9-]+$/).optional().nullable(),
+    twitterHandle: z
+      .string()
+      .max(15)
+      .regex(/^[a-zA-Z0-9_]+$/)
+      .optional()
+      .nullable(),
+    githubHandle: z
+      .string()
+      .max(39)
+      .regex(/^[a-zA-Z0-9-]+$/)
+      .optional()
+      .nullable(),
   });
 
   /**
@@ -630,51 +847,60 @@ export function createApp(customLogger?: Logger) {
    *       500:
    *         description: Internal server error
    */
-  app.patch("/profiles/:username", requireAuth, writeLimiter, async (req, res) => {
-    const parsed = updateProfileSchema.safeParse(req.body);
+  app.patch(
+    "/profiles/:username",
+    requireAuth,
+    writeLimiter,
+    async (req, res) => {
+      const parsed = updateProfileSchema.safeParse(req.body);
 
-    if (!parsed.success) {
-      req.log.warn({ issues: parsed.error.flatten() }, "validation failed");
-      return sendError(res, 400, "Invalid request body");
-    }
-
-    const username = req.params.username as string;
-    const profile = await prisma.profile.findUnique({
-      where: { username },
-    });
-
-    if (!profile) {
-      return sendError(res, 404, "Profile not found");
-    }
-
-    // Verify authenticated wallet owns the profile
-    if (!req.auth || req.auth.walletAddress !== profile.walletAddress) {
-      return sendError(res, 403, "Forbidden: You do not own this profile");
-    }
-
-    try {
-      const updated = await prisma.profile.update({
-        where: { username },
-        data: parsed.data,
-        include: { acceptedAssets: true },
-      });
-      return res.json(updated);
-    } catch (e: unknown) {
-      if (e && typeof e === "object" && "code" in e && e.code === "P2002") {
-        return sendError(res, 409, "Email already in use", "EMAIL_TAKEN");
+      if (!parsed.success) {
+        req.log.warn({ issues: parsed.error.flatten() }, "validation failed");
+        return sendError(res, 400, "Invalid request body");
       }
-      req.log.error({ err: e }, "database error updating profile");
-      return sendError(res, 500, "Internal server error");
-    }
-  });
+
+      const username = req.params.username as string;
+      const profile = await prisma.profile.findUnique({
+        where: { username },
+      });
+
+      if (!profile) {
+        return sendError(res, 404, "Profile not found");
+      }
+
+      // Verify authenticated wallet owns the profile
+      if (!req.auth || req.auth.walletAddress !== profile.walletAddress) {
+        return sendError(res, 403, "Forbidden: You do not own this profile");
+      }
+
+      try {
+        const updated = await prisma.profile.update({
+          where: { username },
+          data: parsed.data,
+          include: { acceptedAssets: true },
+        });
+        return res.json(updated);
+      } catch (e: unknown) {
+        if (e && typeof e === "object" && "code" in e && e.code === "P2002") {
+          return sendError(res, 409, "Email already in use", "EMAIL_TAKEN");
+        }
+        req.log.error({ err: e }, "database error updating profile");
+        return sendError(res, 500, "Internal server error");
+      }
+    },
+  );
 
   // ── Update accepted assets ────────────────────────────────────────────
 
   const updateAssetsSchema = z.object({
-    assets: z.array(z.object({
-      code: z.string().regex(/^[A-Z]{1,12}$/),
-      issuer: z.string().optional(),
-    })).min(1),
+    assets: z
+      .array(
+        z.object({
+          code: z.string().regex(/^[A-Z]{1,12}$/),
+          issuer: z.string().optional(),
+        }),
+      )
+      .min(1),
   });
 
   /**
@@ -723,44 +949,52 @@ export function createApp(customLogger?: Logger) {
    *       500:
    *         description: Internal server error
    */
-  app.patch("/profiles/:username/assets", requireAuth, writeLimiter, async (req, res) => {
-    const parsed = updateAssetsSchema.safeParse(req.body);
+  app.patch(
+    "/profiles/:username/assets",
+    requireAuth,
+    writeLimiter,
+    async (req, res) => {
+      const parsed = updateAssetsSchema.safeParse(req.body);
 
-    if (!parsed.success) {
-      req.log.warn({ issues: parsed.error.flatten() }, "validation failed");
-      return sendError(res, 422, "Invalid assets");
-    }
+      if (!parsed.success) {
+        req.log.warn({ issues: parsed.error.flatten() }, "validation failed");
+        return sendError(res, 422, "Invalid assets");
+      }
 
-    const username = req.params.username as string;
-    const profile = await prisma.profile.findUnique({ where: { username } });
+      const username = req.params.username as string;
+      const profile = await prisma.profile.findUnique({ where: { username } });
 
-    if (!profile) {
-      return sendError(res, 404, "Profile not found");
-    }
+      if (!profile) {
+        return sendError(res, 404, "Profile not found");
+      }
 
-    if (!req.auth || req.auth.walletAddress !== profile.walletAddress) {
-      return sendError(res, 403, "Forbidden: You do not own this profile");
-    }
+      if (!req.auth || req.auth.walletAddress !== profile.walletAddress) {
+        return sendError(res, 403, "Forbidden: You do not own this profile");
+      }
 
-    try {
-      await prisma.$transaction([
-        prisma.acceptedAsset.deleteMany({ where: { profileId: profile.id } }),
-        prisma.acceptedAsset.createMany({
-          data: parsed.data.assets.map((a) => ({ ...a, profileId: profile.id })),
-        }),
-      ]);
+      try {
+        await prisma.$transaction([
+          prisma.acceptedAsset.deleteMany({ where: { profileId: profile.id } }),
+          prisma.acceptedAsset.createMany({
+            data: parsed.data.assets.map((a) => ({
+              ...a,
+              profileId: profile.id,
+            })),
+          }),
+        ]);
 
-      const updated = await prisma.profile.findUnique({
-        where: { username },
-        include: { acceptedAssets: true },
-      });
+        const updated = await prisma.profile.findUnique({
+          where: { username },
+          include: { acceptedAssets: true },
+        });
 
-      return res.json(updated);
-    } catch (e: unknown) {
-      req.log.error({ err: e }, "database error updating assets");
-      return sendError(res, 500, "Internal server error");
-    }
-  });
+        return res.json(updated);
+      } catch (e: unknown) {
+        req.log.error({ err: e }, "database error updating assets");
+        return sendError(res, 500, "Internal server error");
+      }
+    },
+  );
 
   // ── Support transactions ───────────────────────────────────────────────
 
@@ -959,76 +1193,109 @@ export function createApp(customLogger?: Logger) {
    *       500:
    *         description: Internal server error
    */
-  app.post("/support-transactions", requireAuth, writeLimiter, async (req, res) => {
-    const parsed = supportPayloadSchema.safeParse(req.body);
+  app.post(
+    "/support-transactions",
+    requireAuth,
+    writeLimiter,
+    async (req, res) => {
+      const parsed = supportPayloadSchema.safeParse(req.body);
 
-    if (!parsed.success) {
-      const flat = parsed.error.flatten();
-      req.log.warn({ issues: flat }, "validation failed");
-      return res.status(400).json({ error: flat });
-    }
+      if (!parsed.success) {
+        const flat = parsed.error.flatten();
+        req.log.warn({ issues: flat }, "validation failed");
+        return res.status(400).json({ error: flat });
+      }
 
-    const verification = await verifyTransaction(parsed.data.txHash);
+      const verification = await verifyTransaction(parsed.data.txHash);
 
-    if (verification === false) {
-      return res.status(422).json({ error: "Transaction hash not found or not successful on Horizon." });
-    }
-
-    if (verification === "error") {
-      return res.status(503).json({ error: "Service unavailable: unable to verify transaction with Horizon." });
-    }
-
-    const supportRecord = await prisma.supportTransaction.create({
-      data: parsed.data,
-    });
-
-    // Notify creator and supporter (async, best-effort)
-    (async () => {
-      try {
-        const recipientProfile = await prisma.profile.findUnique({
-          where: { id: supportRecord.profileId },
-          select: { email: true, displayName: true, notifyOnSupport: true },
-        });
-
-        if (recipientProfile?.email && recipientProfile.notifyOnSupport !== false) {
-          const mail = contributionReceivedEmail({
-            creatorName: recipientProfile.displayName,
-            supporterAddress: supportRecord.supporterAddress ?? "Anonymous",
-            amount: supportRecord.amount.toString(),
-            assetCode: supportRecord.assetCode,
-            message: supportRecord.message ?? undefined,
+      if (verification === false) {
+        return res
+          .status(422)
+          .json({
+            error: "Transaction hash not found or not successful on Horizon.",
           });
-          sendEmail({ to: recipientProfile.email, ...mail }).catch((err) => {
-            logger.error({ err, profileId: supportRecord.profileId }, "Failed to send contribution received email");
-          });
-        }
+      }
 
-        if (supportRecord.supporterAddress) {
-          const supporterProfile = await prisma.profile.findFirst({
-            where: { walletAddress: supportRecord.supporterAddress },
-            select: { email: true },
+      if (verification === "error") {
+        return res
+          .status(503)
+          .json({
+            error:
+              "Service unavailable: unable to verify transaction with Horizon.",
+          });
+      }
+
+      const supportRecord = await prisma.supportTransaction.create({
+        data: parsed.data,
+      });
+
+      // Notify creator and supporter (async, best-effort)
+      (async () => {
+        try {
+          const recipientProfile = await prisma.profile.findUnique({
+            where: { id: supportRecord.profileId },
+            select: { email: true, displayName: true, notifyOnSupport: true },
           });
 
-          if (supporterProfile?.email) {
-            const mail = contributionSentEmail({
-              recipientName: recipientProfile?.displayName ?? supportRecord.recipientAddress,
+          if (
+            recipientProfile?.email &&
+            recipientProfile.notifyOnSupport !== false
+          ) {
+            const mail = contributionReceivedEmail({
+              creatorName: recipientProfile.displayName,
+              supporterAddress: supportRecord.supporterAddress ?? "Anonymous",
               amount: supportRecord.amount.toString(),
               assetCode: supportRecord.assetCode,
-              txHash: supportRecord.txHash,
+              message: supportRecord.message ?? undefined,
             });
-            sendEmail({ to: supporterProfile.email, ...mail }).catch((err) => {
-              logger.error({ err, txHash: supportRecord.txHash }, "Failed to send contribution sent email");
+            sendEmail({ to: recipientProfile.email, ...mail }).catch((err) => {
+              logger.error(
+                { err, profileId: supportRecord.profileId },
+                "Failed to send contribution received email",
+              );
             });
           }
-        }
-      } catch (err) {
-        logger.error({ err, txHash: supportRecord.txHash }, "Error in background email notification task");
-      }
-    })();
 
-    req.log.info({ txHash: supportRecord.txHash }, "support transaction recorded");
-    res.status(201).json(supportRecord);
-  });
+          if (supportRecord.supporterAddress) {
+            const supporterProfile = await prisma.profile.findFirst({
+              where: { walletAddress: supportRecord.supporterAddress },
+              select: { email: true },
+            });
+
+            if (supporterProfile?.email) {
+              const mail = contributionSentEmail({
+                recipientName:
+                  recipientProfile?.displayName ??
+                  supportRecord.recipientAddress,
+                amount: supportRecord.amount.toString(),
+                assetCode: supportRecord.assetCode,
+                txHash: supportRecord.txHash,
+              });
+              sendEmail({ to: supporterProfile.email, ...mail }).catch(
+                (err) => {
+                  logger.error(
+                    { err, txHash: supportRecord.txHash },
+                    "Failed to send contribution sent email",
+                  );
+                },
+              );
+            }
+          }
+        } catch (err) {
+          logger.error(
+            { err, txHash: supportRecord.txHash },
+            "Error in background email notification task",
+          );
+        }
+      })();
+
+      req.log.info(
+        { txHash: supportRecord.txHash },
+        "support transaction recorded",
+      );
+      res.status(201).json(supportRecord);
+    },
+  );
 
   // ── Analytics ──────────────────────────────────────────────────────────
 
@@ -1072,11 +1339,14 @@ export function createApp(customLogger?: Logger) {
     });
 
     const totalAmount = transactions.reduce(
-      (sum: number, tx: (typeof transactions)[number]) => sum + Number(tx.amount),
-      0
+      (sum: number, tx: (typeof transactions)[number]) =>
+        sum + Number(tx.amount),
+      0,
     );
     const uniqueSupporters = new Set(
-      transactions.map((tx: (typeof transactions)[number]) => tx.supporterAddress)
+      transactions.map(
+        (tx: (typeof transactions)[number]) => tx.supporterAddress,
+      ),
     ).size;
 
     // Calculate daily contributions for last 7 days
@@ -1100,7 +1370,7 @@ export function createApp(customLogger?: Logger) {
       ([date, amount]) => ({
         date,
         amount: Number(amount.toFixed(7)),
-      })
+      }),
     );
 
     // Calculate asset breakdown
@@ -1108,7 +1378,7 @@ export function createApp(customLogger?: Logger) {
     transactions.forEach((tx: (typeof transactions)[number]) => {
       assetMap.set(
         tx.assetCode,
-        (assetMap.get(tx.assetCode) || 0) + Number(tx.amount)
+        (assetMap.get(tx.assetCode) || 0) + Number(tx.amount),
       );
     });
 
@@ -1116,7 +1386,7 @@ export function createApp(customLogger?: Logger) {
       ([name, value]) => ({
         name,
         value: Number(value.toFixed(7)),
-      })
+      }),
     );
 
     const avgContribution =
@@ -1207,9 +1477,9 @@ export function createApp(customLogger?: Logger) {
         return sendError(res, 502, "Avatar storage upload failed");
       }
 
-      const { data: { publicUrl } } = supabaseClient.storage
-        .from(bucket)
-        .getPublicUrl(path);
+      const {
+        data: { publicUrl },
+      } = supabaseClient.storage.from(bucket).getPublicUrl(path);
 
       try {
         const updated = await prisma.profile.update({
@@ -1222,18 +1492,26 @@ export function createApp(customLogger?: Logger) {
         req.log.error({ err: e }, "database error updating avatarUrl");
         return sendError(res, 500, "Internal server error");
       }
-    }
+    },
   );
 
   // ── Multer error handler ───────────────────────────────────────────────
 
-  app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (err instanceof multer.MulterError) {
-      if (err.code === "LIMIT_FILE_SIZE") return sendError(res, 413, "File too large");
-      return sendError(res, 422, "Invalid file");
-    }
-    next(err);
-  });
+  app.use(
+    (
+      err: unknown,
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction,
+    ) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE")
+          return sendError(res, 413, "File too large");
+        return sendError(res, 422, "Invalid file");
+      }
+      next(err);
+    },
+  );
 
   return app;
 }

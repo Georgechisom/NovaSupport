@@ -70,3 +70,20 @@ model SupportTransaction {
   @@index([supporterId])
 }
 
+model RecurringSupport {
+  id               String   @id @default(cuid())
+  supporterAddress String
+  recipientAddress String
+  profileId        String
+  amount           Decimal  @db.Decimal(18, 7)
+  assetCode        String
+  assetIssuer      String?
+  frequency        String
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([supporterAddress])
+  @@index([profileId])
+}
+
